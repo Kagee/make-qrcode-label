@@ -42,12 +42,17 @@ LONGNUM="$(printf "%07.0f" "$NUM")"
 
 qrencode --output="${LONGNUM}-qr.png" --type=PNG --ignorecase -s 10 -m 0 "H#${LONGNUM}";
 
+convert -background white -fill black -size 210x50 -pointsize 45 -font "Ubuntu-Mono" -gravity center label:"H#${LONGNUM}" -trim "${LONGNUM}-label-in.png"
+convert "${LONGNUM}-label-in.png" -gravity center -extent "$(identify -format "210x%[h]" "${LONGNUM}-label-in.png")" "${LONGNUM}-label.png"
+
+
 WIDTH="$(echo "${#TEXT}/6" | bc)"
 WIDTH="$((WIDTH>30 ? WIDTH : 30))"
 FS="$(echo "$TEXT" | fold -s --width "$WIDTH")"
 convert -background white -fill black -gravity Center -font "Ubuntu-Mono" -size 420x210  label:"${FS//$'\n'/\\n}" "${LONGNUM}-text.png"
 
-convert "${LONGNUM}-qr.png" "${LONGNUM}-text.png" +append "${LONGNUM}.png"
+convert "${LONGNUM}-qr.png" "${LONGNUM}-text.png" +append "${LONGNUM}-qr-text.png"
+convert "${LONGNUM}-qr-text.png" "${LONGNUM}-label.png" -smush 5 "${LONGNUM}.png"
 
 ristretto "${LONGNUM}.png" &
 VIEWER_PID="$!"
@@ -62,7 +67,7 @@ xdotool windowmove "$VIEWER" 1920 550
 xdotool windowsize "$VIEWER" 1000 500
 if wait "$VIEWER_PID"; then
   #brother_ql --model QL-810W --printer tcp://brother-ql-810w.intern.hild1.no print -l 62red --red out.png
-  brother_ql --model QL-810W --printer tcp://brother-ql-810w.intern.hild1.no print -l 62 "${LONGNUM}.png";
+  #brother_ql --model QL-810W --printer tcp://brother-ql-810w.intern.hild1.no print -l 62 "${LONGNUM}.png";
   echo "Movin all files to $STORAGE_DIR/"
   mv -- ./*.png "$STORAGE_DIR/";
 else
