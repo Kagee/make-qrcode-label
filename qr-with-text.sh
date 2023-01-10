@@ -67,7 +67,7 @@ xdotool windowmove "$VIEWER" 1920 550
 xdotool windowsize "$VIEWER" 1000 500
 if wait "$VIEWER_PID"; then
   #brother_ql --model QL-810W --printer tcp://brother-ql-810w.intern.hild1.no print -l 62red --red out.png
-  #brother_ql --model QL-810W --printer tcp://brother-ql-810w.intern.hild1.no print -l 62 "${LONGNUM}.png";
+  brother_ql --model QL-810W --printer tcp://brother-ql-810w.intern.hild1.no print -l 62 "${LONGNUM}.png";
   echo "Movin all files to $STORAGE_DIR/"
   mv -- ./*.png "$STORAGE_DIR/";
 else
