@@ -1,5 +1,5 @@
 # make-qrcode-label
-Small wrapper scripts i use to generate, validate and print QR codes on a Brother QL-810W
+Small wrapper scripts i use to generate, validate and print QR codes on a Brother QL-810W. Examples are printed on DK-22212 (62mm x 15,2m, "endless") label paper, and the printer will cut between each print.
 
 ## generate-qr-from-ods.sh
 Will read from Openoffice ODS (se `example.ods`) and run `qr-with-text.sh` on lines, ignoring those already in `01_Output`
