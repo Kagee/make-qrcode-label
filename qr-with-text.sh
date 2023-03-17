@@ -1,4 +1,7 @@
 #! /bin/bash
+
+source "$( cd -- "$( dirname -- "${BASH_SOURCE[0]}" )" &> /dev/null && pwd )/.env" 2>/dev/null || echo "Failed to load .env"; exit 1;
+
 set -o errexit
 set -o nounset
 set -o xtrace

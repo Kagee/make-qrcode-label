@@ -1,5 +1,7 @@
 #! /bin/bash
 
+source "$( cd -- "$( dirname -- "${BASH_SOURCE[0]}" )" &> /dev/null && pwd )/.env" 2>/dev/null || echo "Failed to load .env"; exit 1;
+
 if [ ! -f "$1" ]; then
   echo "Usage: $0 /path/to/archive.ods"
 exit 1
