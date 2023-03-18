@@ -1,0 +1,234 @@
+#! python
+# pylint: disable=missing-module-docstring,missing-function-docstring
+
+import argparse
+import sys
+import os
+import logging
+import csv
+from typing import List
+
+
+def err_exit(msg, *args):
+    logging.error(msg, *args)
+    sys.exit(1)
+
+
+try:
+    import ezodf  # type: ignore
+except ImportError as ierr:
+    err_exit(
+        "%s. Failed to import ezodf. You should be able "
+        "to install it with pip install -U ezodf.",
+        ierr,
+    )
+
+
+def parse_and_test_args():
+    parser = argparse.ArgumentParser(
+        prog="ods2csv", description="Simple convertion of ods to csv"
+    )
+    parser.add_argument(
+        "filename", type=str, help="Filename (only .ods supported)"
+    )
+    parser.add_argument(
+        "-o",
+        "--output-file",
+        default="-",
+        type=str,
+        help="Output file (will be overwritten). Default is -, stdout.",
+    )
+    parser.add_argument(
+        "-s",
+        "--sheet",
+        default=1,
+        type=int,
+        help="What spreadsheet number to parse (1-indexed)",
+    )
+    parser.add_argument(
+        "-r",
+        "--row",
+        default=1,
+        type=int,
+        help="Row to start at. Set to 2 to skip header. (1-indexed)",
+    )
+    parser.add_argument(
+        "-c",
+        "--columns",
+        default=-1,
+        type=int,
+        help="Number of coloums to output. Default is -1, "
+        "auto based on row with most non-empty coloums.",
+    )
+    parser.add_argument(
+        "-l",
+        "--loglevel",
+        type=str.upper,
+        default="ERROR",
+        choices=["DEBUG", "INFO", "WARN", "ERROR", "CRITICAL"],
+    )
+    args = parser.parse_args()
+    logging.basicConfig(
+        format="%(asctime)s [%(levelname)s] "
+        "[%(funcName)s] %(message)s (#%(lineno)d)",
+        datefmt="%Y-%m-%dT%H:%M:%S",
+        level=args.loglevel,
+    )
+
+    assert args.row > 0, "-r/--row must be 1 or higher"
+    assert args.sheet > 0, "-s/--sheet must be 1 or higher"
+    assert (
+        args.columns == -1 or args.columns > 0
+    ), "-c/--columns must be higher that 1"
+
+    args.filename = os.path.abspath(args.filename)
+    assert os.access(
+        args.filename, os.R_OK
+    ), f"Could not find or failed to read file {args.filename}"
+
+    if args.output_file != "-":
+        args.output_file = os.path.abspath(args.output_file)
+
+        if not os.access(args.output_file, os.F_OK):
+            assert os.access(
+                os.path.dirname(args.output_file), os.W_OK
+            ), f"Could not create (write to directory) of file {args.output_file}"
+        else:
+            assert os.access(
+                args.output_file, os.W_OK
+            ), f"Can not write to {args.output_file}"
+
+    return args
+
+
+def find_sheet(doc, sheetnum):
+    sheetbody = [
+        x for x in doc.content.body if isinstance(x, ezodf.body.SpreadsheetBody)
+    ][0]
+    sheets = [x for x in sheetbody if isinstance(x, ezodf.table.Table)]
+    logging.info("Found %s sheets", len(sheets))
+
+    if sheetnum <= len(sheets):
+        logging.info("Returning sheet #%s", sheetnum)
+
+        return sheets[(sheetnum - 1)]
+
+    return None
+
+
+def get_rows(sheet: ezodf.table.Table, row: int) -> List[ezodf.table.TableRow]:
+    rows = [x for x in sheet if isinstance(x, ezodf.table.TableRow)]
+    logging.info("Found %s rows", len(rows))
+
+    if row <= len(rows) - 1:
+        logging.info("Starting at row %d of %s", row, len(rows))
+
+        return rows[row - 1 :]
+
+    return []
+
+
+def parse_rows(
+    rows: List[ezodf.table.TableRow], columns: int
+) -> List[List[str]]:
+    logging.debug(
+        "Parsing %s rows, %s columns",
+        len(rows),
+        "all" if columns == -1 else columns,
+    )
+
+    if columns == 0:
+        return []
+
+    plaintext_rows: List[List[str]] = []
+
+    found_max_cols = 0
+
+    for row in rows:
+        cells = [x for x in row if isinstance(x, ezodf.cells.Cell)]
+        plaintext_cells: List[str] = [x.plaintext().strip() for x in cells]
+
+        # Remove empty cells at end of row to get proper length
+
+        while plaintext_cells[-1] == "":
+            plaintext_cells.pop()
+
+            if not plaintext_cells:
+                break
+
+        found_max_cols = max(found_max_cols, len(plaintext_cells))
+        plaintext_rows.append(plaintext_cells)
+    # Remove apprantly empty rows at bottom, and make all rows
+    # same length in one loop. Not using for ... so we can edit the list
+    i = len(plaintext_rows) - 1
+    found_nonempty = False
+
+    while i >= 0:
+        if any(cell != "" for cell in plaintext_rows[i]) or found_nonempty:
+            found_nonempty = True
+            # Give all same number of cols
+
+            if columns == -1:
+                plaintext_rows[i] = plaintext_rows[i] + [""] * (
+                    found_max_cols - len(plaintext_rows[i])
+                )
+            else:
+                if len(plaintext_rows[i]) > columns:
+                    plaintext_rows[i] = plaintext_rows[i][:columns]
+                else:
+                    plaintext_rows[i] = plaintext_rows[i] + [""] * (
+                        columns - len(plaintext_rows[i])
+                    )
+        else:
+            plaintext_rows.pop()
+        i -= 1
+
+    logging.info("%s rows remaning after cleanup", len(plaintext_rows))
+
+    return plaintext_rows
+
+
+def print_rows(rows: List[List[str]]):
+    csvwriter.writerows
+
+
+def main():
+    args = parse_and_test_args()
+
+    logging.info("Parsed command line: %s", args)
+    doc = ezodf.opendoc(args.filename)
+
+    assert (
+        doc.doctype == "ods"
+    ), f"The file {args.filename} does not appear to be a *.ods file."
+
+    sheet = find_sheet(doc, args.sheet)
+
+    if not sheet:
+        err_exit(
+            "Could not find sheet %(sheet)s in %(filename)s",
+            {"filename": args.filename, "sheet": args.sheet},
+        )
+    rows = get_rows(sheet, args.row)
+
+    if not any(rows):
+        err_exit(
+            "No rows found. Started at row %s in sheet %s of %s",
+            args.row,
+            args.sheet,
+            args.filename,
+        )
+    parsed_rows = parse_rows(rows, args.columns)
+
+    if not any(parsed_rows):
+        err_exit(
+            "No rows found. Started at row %s in sheet %s of %s",
+            args.row,
+            args.sheet,
+            args.filename,
+        )
+    print_rows(parsed_rows)
+
+
+if __name__ == "__main__":
+    main()
