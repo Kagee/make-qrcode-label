@@ -6,7 +6,7 @@ import sys
 import os
 import logging
 import csv
-from typing import List, Optional
+from typing import List
 
 
 def err_exit(msg, *args):
