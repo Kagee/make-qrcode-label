@@ -1,41 +1,66 @@
 #! /bin/bash
+SCRIPT_DIR="$( cd -- "$( dirname -- "${BASH_SOURCE[0]}" )" &> /dev/null && pwd )"
+source "$SCRIPT_DIR/.env" || { echo "Failed to load .env" && exit 99; };
+source "$SCRIPT_DIR/logging.sh" || { echo "Failed to load logging.sh"; exit 1; };
 
-source "$( cd -- "$( dirname -- "${BASH_SOURCE[0]}" )" &> /dev/null && pwd )/.env" 2>/dev/null || echo "Failed to load .env"; exit 1;
+script_logging_level="DEBUG"
 
-set -o errexit
+#set -o errexit
 set -o nounset
-set -o xtrace
-
-STORAGE_DIR="./01_Output"
+#set -o xtrace
 
 trap ctrl_c INT
 
+TMP_DIR="$(mktemp -d -t "$(basename "$0").XXXXXXXXXX")"
+logThis "TMP_DIR is $TMP_DIR" "INFO"
+
 function ctrl_c() {
         echo "Cleaning up"
-        rm -- *.png 2>/dev/null
+        rm -r "$TMP_DIR" 2>/dev/null
 }
+
+if [ -z "${QK_NUM-}" ]; then
+  if [ $# -gt 0 ]; then
+    QK_NUM="$1"
+  else
+    QK_NUM="$(zenity --entry --text "Serial number for label")"
+  fi
+fi
+
+if [ -z "${QK_NUM-}" ]; then
+  logThis "No serial number supplied" "ERROR"
+  exit 1;
+fi
+
+if [ -z "${QK_TEXT-}" ]; then
+  if [ $# -gt 1 ]; then
+    QK_TEXT="$2"
+  else
+    QK_TEXT="$(zenity --entry --text "Text for label")"
+  fi
+fi
+
+if [ -z "${QK_TEXT-}" ]; then
+  logThis "No text supplied" "ERROR"
+  exit 1;
+fi
+logThis "NUM is '$QK_NUM'" "INFO"
+logThis "TEXT is '$QK_TEXT'" "INFO"
+
+BASE_LETTER=${QK_NUM:0:1}
+NUM="${QK_NUM:2}"
+STORAGE_DIR="$QK_ARCHIVE_BASE/$BASE_LETTER/$NUM"
+
+logThis "Storage dir is $STORAGE_DIR" "INFO"
 
 mkdir -p "$STORAGE_DIR"
 
-if [ $# -eq 0 ]; then
-  NUM="$(zenity --entry --text "Number")"
-  TEXT="$(zenity --entry --text "Text")"
+OUTPUTFILE="$STORAGE_DIR/$NUM.png"
+if [ -f "$OUTPUTFILE" ]; then
+  logThis "File already exsists: $OUTPUTFILE" "ERROR"
+  exit 1;
 fi
-
-if [ $# -eq 1 ]; then
-  NUM="$1"
-  TEXT="$(zenity --entry --text "Text")"
-fi
-
-if [ $# -eq 2 ]; then
-  NUM="$1"
-  TEXT="$2"
-fi
-# shellcheck disable=SC2010
-MIN="$(cd $STORAGE_DIR/; ls -- *.png | grep -P '\d\d\d\d\d\d\d.png' | sort -n -r | head -1 | cut -d. -f1)"
-if [ -z "$MIN" ]; then
-  MIN=0;
-fi
+exit 100
 NUMOK="$(echo "$NUM <= $MIN" | bc)"
 if [ $NUMOK -eq 1 ]; then
   echo "Input number ($NUM) is lower or equal to the largest number in $STORAGE_DIR ($MIN)" 1>&2
@@ -73,6 +98,7 @@ if wait "$VIEWER_PID"; then
   brother_ql --model QL-810W --printer tcp://brother-ql-810w.intern.hild1.no print -l 62 "${LONGNUM}.png";
   echo "Movin all files to $STORAGE_DIR/"
   mv -- ./*.png "$STORAGE_DIR/";
+  rm -r $TMP_DIR 2>/dev/null || true
 else
   ctrl_c
 fi
