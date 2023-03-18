@@ -9,15 +9,6 @@ script_logging_level="DEBUG"
 set -o nounset
 #set -o xtrace
 
-trap ctrl_c INT
-
-TMP_DIR="$(mktemp -d -t "$(basename "$0").XXXXXXXXXX")"
-logThis "TMP_DIR is $TMP_DIR" "INFO"
-
-function ctrl_c() {
-        echo "Cleaning up"
-        rm -r "$TMP_DIR" 2>/dev/null
-}
 
 if [ -z "${QK_NUM-}" ]; then
   if [ $# -gt 0 ]; then
@@ -49,56 +40,72 @@ logThis "TEXT is '$QK_TEXT'" "INFO"
 
 BASE_LETTER=${QK_NUM:0:1}
 NUM="${QK_NUM:2}"
-STORAGE_DIR="$QK_ARCHIVE_BASE/$BASE_LETTER/$NUM"
+STORAGE_DIR="$QK_ARCHIVE_BASE/$BASE_LETTER/$NUM/label"
 
 logThis "Storage dir is $STORAGE_DIR" "INFO"
 
+
 mkdir -p "$STORAGE_DIR"
 
-OUTPUTFILE="$STORAGE_DIR/$NUM.png"
+trap ctrl_c INT
+function ctrl_c() {
+        echo "Cleaning up"
+        rm -r "${STORAGE_DIR:?}/"* 2>/dev/null
+        exit 0;
+}
+
+OUTPUTFILE="$STORAGE_DIR/${NUM}.png"
+QRFILE="$STORAGE_DIR/${NUM}-qr.png"
+NUMBERFILE="$STORAGE_DIR/${NUM}-number.png"
+
 if [ -f "$OUTPUTFILE" ]; then
   logThis "File already exsists: $OUTPUTFILE" "ERROR"
   exit 1;
 fi
-exit 100
-NUMOK="$(echo "$NUM <= $MIN" | bc)"
-if [ $NUMOK -eq 1 ]; then
-  echo "Input number ($NUM) is lower or equal to the largest number in $STORAGE_DIR ($MIN)" 1>&2
-  exit 1
-fi
-LONGNUM="$(printf "%07.0f" "$NUM")"
 
-qrencode --output="${LONGNUM}-qr.png" --type=PNG --ignorecase -s 10 -m 0 "H#${LONGNUM}";
-
-convert -background white -fill black -size 210x50 -pointsize 45 -font "Ubuntu-Mono" -gravity center label:"H#${LONGNUM}" -trim "${LONGNUM}-label-in.png"
-convert "${LONGNUM}-label-in.png" -gravity center -extent "$(identify -format "210x%[h]" "${LONGNUM}-label-in.png")" "${LONGNUM}-label.png"
+qrencode --output="$QRFILE" --type=PNG --ignorecase -s 10 -m 0 "$QK_NUM";
+logThis "QR-code: $QRFILE" "DEBUG"
+convert -background white -fill black -size 210x50 -pointsize 45 -font "Ubuntu-Mono" -gravity center label:"$QK_NUM" -trim "$NUMBERFILE"
+# Center the text on 210 pixels
+convert "$NUMBERFILE" -gravity center -extent "$(identify -format "210x%[h]" "$NUMBERFILE")" "$NUMBERFILE"
+logThis "Numberfile: $NUMBERFILE" "DEBUG"
 
 
-WIDTH="$(echo "${#TEXT}/6" | bc)"
+TEXTFILE="$STORAGE_DIR/${NUM}-text.png"
+WIDTH="$(echo "${#QK_TEXT}/6" | bc)"
 WIDTH="$((WIDTH>30 ? WIDTH : 30))"
-FS="$(echo "$TEXT" | fold -s --width "$WIDTH")"
-convert -background white -fill black -gravity Center -font "Ubuntu-Mono" -size 420x210  label:"${FS//$'\n'/\\n}" "${LONGNUM}-text.png"
+FS="$(echo "$QK_TEXT" | fold -s --width "$WIDTH")"
+convert -background white -fill black -gravity Center -font "Ubuntu-Mono" -size 420x210  label:"${FS//$'\n'/\\n}" "$TEXTFILE"
+logThis "Textfile: $TEXTFILE" "DEBUG"
 
-convert "${LONGNUM}-qr.png" "${LONGNUM}-text.png" +append "${LONGNUM}-qr-text.png"
-convert "${LONGNUM}-qr-text.png" "${LONGNUM}-label.png" -smush 5 "${LONGNUM}.png"
 
-ristretto "${LONGNUM}.png" &
-VIEWER_PID="$!"
-# Must sleep because it takes a second before we can find the window,
-# could in teory loop instead
-sleep 1
-# ristretto's title/name includes the filename
-VIEWER=$(xdotool search --onlyvisible --name "${LONGNUM}.png");
-# we must unmaximize (not minimize) before we move and resize
-wmctrl -ir "$VIEWER" -b remove,maximized_vert,maximized_horz
-xdotool windowmove "$VIEWER" 1920 550
-xdotool windowsize "$VIEWER" 1000 500
-if wait "$VIEWER_PID"; then
-  #brother_ql --model QL-810W --printer tcp://brother-ql-810w.intern.hild1.no print -l 62red --red out.png
-  brother_ql --model QL-810W --printer tcp://brother-ql-810w.intern.hild1.no print -l 62 "${LONGNUM}.png";
-  echo "Movin all files to $STORAGE_DIR/"
-  mv -- ./*.png "$STORAGE_DIR/";
-  rm -r $TMP_DIR 2>/dev/null || true
+QRTEXTFILE="$STORAGE_DIR/${NUM}-qr-text.png"
+convert "$QRFILE" "$TEXTFILE" +append "$QRTEXTFILE"
+logThis "QR-Textfile: $QRTEXTFILE" "DEBUG"
+convert "$QRTEXTFILE" "$NUMBERFILE" -smush 5 "$OUTPUTFILE"
+logThis "Output file is: $OUTPUTFILE" "INFO"
+
+if ! command -v tiv &> /dev/null; then
+  ristretto "$OUTPUTFILE" &
+  VIEWER_PID="$!"
+  # Must sleep because it takes a second before we can find the window,
+  # could in teory loop instead
+  sleep 1
+  # ristretto's title/name includes the filename
+  VIEWER=$(xdotool search --onlyvisible --name "$(basename "$OUTPUTFILE")");
+  # we must unmaximize (not minimize) before we move and resize
+  wmctrl -ir "$VIEWER" -b remove,maximized_vert,maximized_horz
+  xdotool windowmove "$VIEWER" 1920 550
+  xdotool windowsize "$VIEWER" 1000 500
+  if wait "$VIEWER_PID"; then
+    logThis "Viewer closed, continuing" "DEBUG"
+  else
+    echo "manuel cleanup"
+    ctrl_c
+  fi
 else
-  ctrl_c
+  tiv "$OUTPUTFILE"
+  read -r -p "Enter to print, CTRL-D to cancel";
 fi
+
+brother_ql --model QL-810W --printer tcp://brother-ql-810w.intern.hild1.no print -l 62 "$OUTPUTFILE";
