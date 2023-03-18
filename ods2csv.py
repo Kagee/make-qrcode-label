@@ -67,6 +67,39 @@ def parse_and_test_args():
         default="ERROR",
         choices=["DEBUG", "INFO", "WARN", "ERROR", "CRITICAL"],
     )
+    parser.add_argument(
+        "--quoting",
+        type=str.upper,
+        default=None,
+        help="What Python CSV quoting to use. Default is QUOTE_MINIMAL or based on dialect (if set).",
+        choices=[
+            "QUOTE_ALL",
+            "QUOTE_MINIMAL",
+            "QUOTE_NONNUMERIC",
+            "QUOTE_NONE",
+        ],
+    )
+    parser.add_argument(
+        "--delimiter",
+        default=None,
+        help="What one-char delimiter to use. If int, parsed as ASCII."
+        "Defaults to tab or based on dialect (if set).",
+    )
+    parser.add_argument(
+        "--quotechar",
+        type=str.lower,
+        default=None,
+        help='What one-char delimiter to use. Defaults to " or based on dialect (if set)',
+        choices=csv.list_dialects(),
+    )
+    parser.add_argument(
+        "-d",
+        "--dialect",
+        type=str.lower,
+        default=None,
+        help="Use spesific Python CSV dialect to format output. Will be modified by --delimiter, --quoting and --quotechar (if set).",
+        choices=csv.list_dialects(),
+    )
     args = parser.parse_args()
     logging.basicConfig(
         format="%(asctime)s [%(levelname)s] "
@@ -188,8 +221,14 @@ def parse_rows(
     return plaintext_rows
 
 
-def print_rows(rows: List[List[str]]):
-    csvwriter.writerows
+def print_rows(rows: List[List[str]], outname: str):
+    with sys.stdout if outname == "-" else open(
+        outname, "w", encoding="utf-8", newline=""
+    ) as outfile:
+        output = csv.writer(
+            outfile, delimiter=" ", quotechar="|", quoting=csv.QUOTE_MINIMAL
+        )
+        output.writerows(rows)
 
 
 def main():
@@ -227,7 +266,7 @@ def main():
             args.sheet,
             args.filename,
         )
-    print_rows(parsed_rows)
+    print_rows(parsed_rows, args.output_file)
 
 
 if __name__ == "__main__":
