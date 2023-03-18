@@ -6,7 +6,7 @@ import sys
 import os
 import logging
 import csv
-from typing import List
+from typing import List, Optional
 
 
 def err_exit(msg, *args):
@@ -237,10 +237,14 @@ def parse_rows(
 
 
 def print_rows(rows: List[List[str]], outname: str, **formatargs):
-    dialect = formatargs["dialect"] if "dialect" in formatargs else None
-    delimiter = formatargs["delimiter"] if "delimiter" in formatargs else None
-    quotechar = formatargs["quotechar"] if "quotechar" in formatargs else None
-    quoting = formatargs["quoting"] if "quoting" in formatargs else None
+    dialect: str = formatargs["dialect"] if "dialect" in formatargs else ""
+    delimiter: str = (
+        formatargs["delimiter"] if "delimiter" in formatargs else ""
+    )
+    quotechar: str = (
+        formatargs["quotechar"] if "quotechar" in formatargs else ""
+    )
+    quoting: str = formatargs["quoting"] if "quoting" in formatargs else ""
 
     if "dialect" in formatargs and not formatargs["dialect"]:
         # No dialect, set defaults
@@ -248,9 +252,21 @@ def print_rows(rows: List[List[str]], outname: str, **formatargs):
         quotechar = '"' if not quotechar else quotechar
         quoting = "QUOTE_MINIMAL" if not quoting else quoting
 
+    logging.debug("Output is %s", "sys.stdout" if outname == "-" else outname)
+
+    if outname != "-":
+        logging.info("Overwriting %s", outname)
     with sys.stdout if outname == "-" else open(
         outname, "w", encoding="utf-8", newline=""
     ) as outfile:
+        logging.debug(
+            "CSV config is dialect: %s, delimiter: %s, quotechar: %s, quoting: %s",
+            dialect,
+            "\\t" if delimiter == "\t" else delimiter,
+            quotechar,
+            quoting,
+        )
+
         if dialect:
             kwargs = {"dialect": dialect}
 
@@ -270,6 +286,7 @@ def print_rows(rows: List[List[str]], outname: str, **formatargs):
                 quotechar=quotechar,
                 quoting=getattr(csv, quoting),
             )
+        logging.debug("Printing %d rows", len(rows))
         output.writerows(rows)
 
 
