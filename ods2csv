@@ -68,10 +68,12 @@ def parse_and_test_args():
         choices=["DEBUG", "INFO", "WARN", "ERROR", "CRITICAL"],
     )
     parser.add_argument(
+        "-q",
         "--quoting",
         type=str.upper,
         default=None,
-        help="What Python CSV quoting to use. Default is QUOTE_MINIMAL or based on dialect (if set).",
+        help="What Python CSV quoting to use. "
+        "Default is QUOTE_MINIMAL or based on dialect (if set).",
         choices=[
             "QUOTE_ALL",
             "QUOTE_MINIMAL",
@@ -80,24 +82,27 @@ def parse_and_test_args():
         ],
     )
     parser.add_argument(
+        "-e",
         "--delimiter",
+        type=str,
         default=None,
-        help="What one-char delimiter to use. If int, parsed as ASCII."
+        help="What one-char delimiter to use. Use default or \\t for tab. "
         "Defaults to tab or based on dialect (if set).",
     )
     parser.add_argument(
+        "-u",
         "--quotechar",
-        type=str.lower,
+        type=str,
         default=None,
         help='What one-char delimiter to use. Defaults to " or based on dialect (if set)',
-        choices=csv.list_dialects(),
     )
     parser.add_argument(
         "-d",
         "--dialect",
         type=str.lower,
         default=None,
-        help="Use spesific Python CSV dialect to format output. Will be modified by --delimiter, --quoting and --quotechar (if set).",
+        help="Use spesific Python CSV dialect to format output. "
+        "Will be modified by --delimiter, --quoting and --quotechar (if set).",
         choices=csv.list_dialects(),
     )
     args = parser.parse_args()
@@ -108,6 +113,7 @@ def parse_and_test_args():
         level=args.loglevel,
     )
 
+    logging.info("Parsed command line: %s", args)
     assert args.row > 0, "-r/--row must be 1 or higher"
     assert args.sheet > 0, "-s/--sheet must be 1 or higher"
     assert (
@@ -130,6 +136,15 @@ def parse_and_test_args():
             assert os.access(
                 args.output_file, os.W_OK
             ), f"Can not write to {args.output_file}"
+
+    if args.delimiter == "\\t":
+        args.delimiter = "\t"
+    assert (
+        args.delimiter is None or len(args.delimiter) == 1
+    ), f"Delimiter can only be one char (is {len(args.delimiter)})"
+    assert (
+        args.quotechar is None or len(args.quotechar) == 1
+    ), f"Delimiter can only be one char (is {len(args.quotechar)})"
 
     return args
 
@@ -221,20 +236,46 @@ def parse_rows(
     return plaintext_rows
 
 
-def print_rows(rows: List[List[str]], outname: str):
+def print_rows(rows: List[List[str]], outname: str, **formatargs):
+    dialect = formatargs["dialect"] if "dialect" in formatargs else None
+    delimiter = formatargs["delimiter"] if "delimiter" in formatargs else None
+    quotechar = formatargs["quotechar"] if "quotechar" in formatargs else None
+    quoting = formatargs["quoting"] if "quoting" in formatargs else None
+
+    if "dialect" in formatargs and not formatargs["dialect"]:
+        # No dialect, set defaults
+        delimiter = "\t" if not delimiter else delimiter
+        quotechar = '"' if not quotechar else quotechar
+        quoting = "QUOTE_MINIMAL" if not quoting else quoting
+
     with sys.stdout if outname == "-" else open(
         outname, "w", encoding="utf-8", newline=""
     ) as outfile:
-        output = csv.writer(
-            outfile, delimiter=" ", quotechar="|", quoting=csv.QUOTE_MINIMAL
-        )
+        if dialect:
+            kwargs = {"dialect": dialect}
+
+            if delimiter:
+                kwargs["delimiter"] = delimiter
+
+            if quotechar:
+                kwargs["quotechar"] = quotechar
+
+            if quoting:
+                kwargs["quoting"] = getattr(csv, quoting)
+            output = csv.writer(outfile, **kwargs)  # type: ignore
+        else:
+            output = csv.writer(
+                outfile,
+                delimiter=delimiter,
+                quotechar=quotechar,
+                quoting=getattr(csv, quoting),
+            )
         output.writerows(rows)
 
 
 def main():
     args = parse_and_test_args()
 
-    logging.info("Parsed command line: %s", args)
     doc = ezodf.opendoc(args.filename)
 
     assert (
@@ -266,7 +307,14 @@ def main():
             args.sheet,
             args.filename,
         )
-    print_rows(parsed_rows, args.output_file)
+    print_rows(
+        parsed_rows,
+        args.output_file,
+        delimiter=args.delimiter,
+        quotechar=args.quotechar,
+        quoting=args.quoting,
+        dialect=args.dialect,
+    )
 
 
 if __name__ == "__main__":
