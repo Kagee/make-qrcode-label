@@ -13,3 +13,8 @@ Takes a number (ID) and text as input. Generates QR code with label.
 Generates a matrix of QR codes.
 
 ![Image example of output from make-qr-matrix.sh](.github/make-qr-matrix.sh-example.jpg)
+
+## ods2csv
+Converts a ODS to CSV. Supports multiple sheets.
+
+Made because all other tools sucked.
