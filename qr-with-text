@@ -104,5 +104,4 @@ else
   # Pipe input from /dev/tty so this can be used in a while loop (subshell)
   read -r -p "Enter to print, CTRL-C to cancel" < /dev/tty;
 fi
-
-brother_ql --model QL-810W --printer tcp://brother-ql-810w.intern.hild1.no print -l 62 "$OUTPUTFILE";
+$QL_PRINT_CMD "$OUTPUTFILE"
