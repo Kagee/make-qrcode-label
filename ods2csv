@@ -1,4 +1,4 @@
-#! python
+#! /usr/bin/env python
 # pylint: disable=missing-module-docstring,missing-function-docstring
 
 import argparse
