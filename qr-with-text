@@ -100,8 +100,15 @@ if ! command -v tiv &> /dev/null; then
     ctrl_c
   fi
 else
-  tiv "$OUTPUTFILE"
+  $QK_TIV_EXEC "$OUTPUTFILE"
   # Pipe input from /dev/tty so this can be used in a while loop (subshell)
-  read -r -p "Enter to print, CTRL-C to cancel" < /dev/tty;
+  read -r -n 1 -p "[P/s/c] Print and save, just save or cancel" COMMAND < /dev/tty;
+  if [ -n "$COMMAND" ]; then
+    if [[ "$COMMAND" =~ ^(S|s)$ ]]; then
+      exit 0;
+    elif [[ "$COMMAND" =~ ^(C|c)$ ]]; then
+      ctrl_c
+    fi
+  fi
 fi
 $QL_PRINT_CMD "$OUTPUTFILE"
