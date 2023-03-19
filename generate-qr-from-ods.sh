@@ -1,48 +1,85 @@
 #! /bin/bash
 
-source "$( cd -- "$( dirname -- "${BASH_SOURCE[0]}" )" &> /dev/null && pwd )/.env" 2>/dev/null || echo "Failed to load .env"; exit 1;
+SCRIPT_DIR="$( cd -- "$( dirname -- "${BASH_SOURCE[0]}" )" &> /dev/null && pwd )"
+source "$SCRIPT_DIR/logging.sh" || { echo "Failed to load logging.sh"; exit 1; };
+source "$SCRIPT_DIR/.env" || { logThis "Failed to load .env." "INFO"; };
 
-echo "not using env vars"
-exit 1
-if [ ! -f "$1" ]; then
-  echo "Usage: $0 /path/to/archive.ods"
-exit 1
-fi
-ODS="$1"
-
-set -o errexit
 set -o nounset
-#set -o xtrace
-STORAGE_DIR="./01_Output"
 
-trap ctrl_c INT
+if [ -z "${QK_ARCHIVE_BASE-}" ] || [ -z "${QK_ARCHIVE_ODS-}" ] || [ -z "${QK_ARCHIVE_ODS-}" ]; then
+  logThis "One or more env vars missing" "DEBUG"
+  if [ -z "$1" ]; then
+    echo "Usage:"
+    echo "QK_ARCHIVE_BASE=.... QK_ARCHIVE_ODS=....ods QK_ARCHIVE_SHEETS=N $0"
+    echo "$0 /path/to/archive.ods NUMBEROFSHEETS"
+    exit 1
+  else
+    if [ -f "$1" ]; then
+      logThis "Using command line arguments" "DEBUG"
+      QK_ARCHIVE_BASE="$(dirname "$1")"
+      QK_ARCHIVE_ODS="$(basename "$1")"
+      if [ -z "$2" ]; then
+        QK_ARCHIVE_NUM_SHEETS="1"
+      else
+        QK_ARCHIVE_NUM_SHEETS="$2"
+      fi
+    else
+      logThis "The file $1 was not found" "ERROR"
+      exit 1
+    fi
+  fi
+elif [ -n "${1-}" ]; then
+  logThis "Got both command line and env vars" "ERROR"
+  exit 1
+else
+  logThis "Using env vars for config" "DEBUG"
+fi
 
-function ctrl_c() {
-        echo "Cleaning up"
-        rm -- *.png 2>/dev/null
+logThis "QK_ARCHIVE_BASE is $QK_ARCHIVE_BASE" "INFO"
+logThis "QK_ARCHIVE_ODS in $QK_ARCHIVE_ODS" "INFO"
+logThis "QK_ARCHIVE_NUM_SHEETS in $QK_ARCHIVE_NUM_SHEETS" "INFO"
+
+
+
+function get_sheet_data() {
+  logThis "Getting data for $QK_ARCHIVE_BASE/$QK_ARCHIVE_ODS sheet $1" "DEBUG"
+  $QK_ODS2CSV_EXEC -s "$1" -r 2 "$QK_ARCHIVE_BASE/$QK_ARCHIVE_ODS"
 }
 
-mkdir -p "$STORAGE_DIR"
-
-# shellcheck disable=SC2010
-MIN="$(cd $STORAGE_DIR/; ls -- *.png 2>/dev/null | grep -P '\d\d\d\d\d\d\d.png' | sort -n -r | head -1 | cut -d. -f1 | bc)"
-if [ -z "$MIN" ]; then
-  MIN=0;
-fi
-DATA="$(unoconv -f csv -e FilterOptions=9,34,76 --stdout "$ODS" | tail -n +2)"
-
-echo "$DATA" | while read -r ROW; do
-  ID="$(echo "$ROW" | cut -f 1)";
-  NAME="$(echo "$ROW" | cut -f 2)";
-  if [ "$ID" = "$NAME" ]; then
-    echo "ID $ID has no name, stopping here." 1>&2;
-    exit 0;
-  fi;
-  NUM="$(echo "$ID" | cut -d\# -f 2 | bc)"
-  echo "ID $ID has name $NAME" 1>&2;
-  if [ "$NUM" -gt "$MIN" ]; then
-    ./qr-with-text.sh "$NUM" "$NAME"
+function process_item() {
+  QK_NUM=$(echo "$1" | cut -f1)
+  QK_TEXT=$(echo "$1" | cut -f2)
+  if [ -n "$QK_TEXT" ]; then
+  BASE_LETTER=${QK_NUM:0:1}
+  NUM="${QK_NUM:2}"
+  OUTPUTFILE="$QK_ARCHIVE_BASE/$BASE_LETTER/$NUM/label/${NUM}.png"
+  if [ -f "$OUTPUTFILE" ]; then
+    logThis "Serial '$QK_NUM' has finished output file $OUTPUTFILE" "DEBUG"
   else
-    echo "ID $ID er allerede printet"
+    logThis "Serial '$QK_NUM' has no output file" "INFO"
+    export QK_NUM
+    export QK_TEXT
+    ./qr-with-text
+    # shellcheck disable=SC2181
+    if [ "$?" -ne "0" ]; then
+      logThis "qr-with-text failed, se log for details $QK_TEXT" "ERROR"
+      exit 1
+    fi
   fi
+  else
+    logThis "Serial '$QK_NUM' has no text, skipping" "DEBUG"
+  fi
+
+}
+for I in $(seq 1 "$QK_ARCHIVE_NUM_SHEETS"); do
+  logThis "Prosessing sheet $I of $QK_ARCHIVE_NUM_SHEETS" "INFO"
+  DATA="$(get_sheet_data "$I")"
+  logThis "Sheet data:" "DEBUG"
+  logThis "$DATA" "DEBUG"
+  LAST_ITEM=""
+  while IFS= read -r ITEM; do
+    process_item "$ITEM"
+    LAST_ITEM="$ITEM"
+  done <<< "$DATA"
+  logThis "Processed up to $LAST_ITEM" "INFO"
 done
