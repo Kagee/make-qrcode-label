@@ -3,12 +3,7 @@ SCRIPT_DIR="$( cd -- "$( dirname -- "${BASH_SOURCE[0]}" )" &> /dev/null && pwd )
 source "$SCRIPT_DIR/.env" || { echo "Failed to load .env" && exit 99; };
 source "$SCRIPT_DIR/logging.sh" || { echo "Failed to load logging.sh"; exit 1; };
 
-script_logging_level="DEBUG"
-
-#set -o errexit
 set -o nounset
-#set -o xtrace
-
 
 if [ -z "${QK_NUM-}" ]; then
   if [ $# -gt 0 ]; then
@@ -87,6 +82,7 @@ logThis "Output file is: $OUTPUTFILE" "INFO"
 
 if ! command -v tiv &> /dev/null; then
   ristretto "$OUTPUTFILE" &
+  echo "Close viewer to continue, CTRL-C to cancel"
   VIEWER_PID="$!"
   # Must sleep because it takes a second before we can find the window,
   # could in teory loop instead
@@ -105,7 +101,8 @@ if ! command -v tiv &> /dev/null; then
   fi
 else
   tiv "$OUTPUTFILE"
-  read -r -p "Enter to print, CTRL-D to cancel";
+  # Pipe input from /dev/tty so this can be used in a while loop (subshell)
+  read -r -p "Enter to print, CTRL-C to cancel" < /dev/tty;
 fi
 
 brother_ql --model QL-810W --printer tcp://brother-ql-810w.intern.hild1.no print -l 62 "$OUTPUTFILE";
