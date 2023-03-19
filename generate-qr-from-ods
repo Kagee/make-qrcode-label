@@ -39,8 +39,6 @@ logThis "QK_ARCHIVE_BASE is $QK_ARCHIVE_BASE" "INFO"
 logThis "QK_ARCHIVE_ODS in $QK_ARCHIVE_ODS" "INFO"
 logThis "QK_ARCHIVE_NUM_SHEETS in $QK_ARCHIVE_NUM_SHEETS" "INFO"
 
-
-
 function get_sheet_data() {
   logThis "Getting data for $QK_ARCHIVE_BASE/$QK_ARCHIVE_ODS sheet $1" "DEBUG"
   $QK_ODS2CSV_EXEC -s "$1" -r 2 "$QK_ARCHIVE_BASE/$QK_ARCHIVE_ODS"
